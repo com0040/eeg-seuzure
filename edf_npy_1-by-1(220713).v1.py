@@ -26,15 +26,16 @@ output_path = '//192.168.45.194/MainLAB/LabMeeting/leechangjae/data/chb-mit_npy/
 # file_name = pyedflib.data.get_generator_filename()
 
 file_path_list = []
-file_label = [] 
+file_label = []
 file_seizure = []
+print('경로에서 .edf만 가져와서 file_path_lsit에 저장')
+
 
 for (root, directories, files) in os.walk(file_path):
-    print('경로에서 .edf만 가져와서 file_path_lsit에 저장')
     # 경로를 3가지로 분리해서 가져옴/root:폴더 경로/files:파일명
     for file in files: # files에서 
         if file.endswith('.edf'): # .edf 확장자 인거만 가져와서
-            file_path = os.path.join(root, file) 
+            file_path = os.path.join(root, file)
             # 경로와 파일명 합쳐서 file_path에 합쳐주고 누적은 안되니
             file_path_list.append(file_path)
             # 만들때 마다 리스트에 저장하자
@@ -53,16 +54,18 @@ wr.writerow(['File Name','Number of Seizures in File','Seizures 1 Start Time','S
 for j in file_label: # 라벨된 데이터 불러와서 csv로 만들기
     if j != file_label[0]:
         file = open(j, 'r')
-        lines = file.readlines()
+        lines = file.readlines() # lines라는 리스트에 한줄씩 저장
         list_line =[]
         for q in lines:                        
-            if 'File Name:' in q:
-                list_line.insert(0, q[11:])                     
+            if 'File Name:' in q:                
+                list_line.append(q[11:])                     
             
             if 'Number of Seizures in File: 0' in q:
-                list_line.insert(1, 0)   
+                list_line.append(0)
+                wr.writerow(list_line)
+                list_line = []
             elif 'Number of Seizures in File:' in q and 'Number of Seizures in File: 0' not in q:
-                list_line.insert(1, 1) 
+                list_line.append(1) 
                                          
             if 'Seizure 1 Start Time' in q:
                 list_line.append(re.sub(r'[^0-9]','',q))
@@ -77,18 +80,20 @@ for j in file_label: # 라벨된 데이터 불러와서 csv로 만들기
             elif 'Seizure 2 End Time' in q:
                 list_line.append(re.sub(r'[^0-9]','',q))
             elif 'Seizure 3 End Time' in q:
-                list_line.append(re.sub(r'[^0-9]','',q))
+                list_line.append(re.sub(r'[^0-9]','',q))                
             elif 'Seizure End Time' in q:
                 list_line.append(re.sub(r'[^0-9]','',q))
-                
+                                
             # elif 'File Start Time' in q:
             #     list_line.insert(2,re.sub(r'[^0-9]','',q))
             # elif 'File End Time' in q:
             #     list_line.insert(3,re.sub(r'[^0-9]','',q))
                 
             if  len(q) == 1:
-                wr.writerow(list_line)
-                list_line = []
+                 wr.writerow(list_line)
+                 list_line = []
+                 
+        wr.writerow(list_line)     
 file_txt.close()
 
 df = pd.read_csv('//192.168.45.194/MainLAB/LabMeeting/leechangjae/data/chb-mit_npy/all_chb.csv',
@@ -97,18 +102,19 @@ df = df.fillna(0)
 # PaserError : on_bad_lines='skip'(해결)
 g=0
 for k in file_path_list: # 변환 과정을 한눈에 알아보자 
-    print('총 %s개 %d번 시작' %(len(file_path_list),g+1), end=' ')
+    
     file_edf = pyedflib.EdfReader(k) # pydeflib클래스에서 EdfReader 변수를 f에 선언
     n = file_edf.signals_in_file # 파일 내에 signal 정보를 n에 저장
     signal_labels = file_edf.getSignalLabels() # signal_labels불러오기
-    sigbufs = np.zeros((n, file_edf.getNSamples()[0])) 
+    # sigbufs = np.zeros((n, file_edf.getNSamples()[0]))
     # sigbufs에 샘플 갯수 맞춰서 배열 생성 리스트랑 다르게 미리 크기를 만들 수 밖에 없음
     sigbufs_label = np.zeros((1,file_edf.getNSamples()[0]))
     # sigbufs에 샘플 갯수 맞춰서 0으로 초기화된 배열 생성
-    print('배열모양', sigbufs_label.shape, '.npy 생성 중', end=' ')
-    for t in tqdm(file_seizure): # seizure 있는지 확인하고 sigbufs_label에 표기
+    print('총 %s개 %d번 시작' %(len(file_path_list),g+1), end=' ')
+    print(sigbufs_label.shape, '생성 중', end=' ')
+    for t in file_seizure: # seizure 있는지 확인하고 sigbufs_label에 표기
         if t[125:137] == k[125:]: # seizure 있으면 
-            print('찾앗다')
+            print('찾앗다', end=' ')
             list_df = list(np.array(df[df['File Name'] == '%s\n' %t[125:137]]))          
             # index=0(파일명),1(시저유무),2(발작1시작),3(발작1끝)
             # 4(발작2시작), 5(발작2끝), 6(발작3시작), 7(발작3끝)                    
@@ -119,26 +125,27 @@ for k in file_path_list: # 변환 과정을 한눈에 알아보자
                 sigbufs_label[:,int(list_df[0][6]*256):int(list_df[0][7]*256)] = 1 
                
     # np.save('%s%s_label' % (output_path, file_path_list[g][125:133]), sigbufs_label)
-    print('배열모양', sigbufs.shape, '.npy 생성 중', end=' ')
-    for i in np.arange(n): # 만들어진 배열에 값을 넣어주자
-        sigbufs[i, :] = file_edf.readSignal(i) # 시그널을 읽어서 하나하나 넣어줌
+    # print('배열모양', sigbufs.shape, '.npy 생성 중', end=' ')
+    # for i in np.arange(n): # 만들어진 배열에 값을 넣어주자
+         # sigbufs[i, :] = file_edf.readSignal(i) # 시그널을 읽어서 하나하나 넣어줌
         
         # 채널별로 불러오는듯?
-    if len(sigbufs[0])%4096 !=0: # 배열을 4096크기로 나누어 떨어지지 않을때
-        sigbufs = sigbufs[:,0:(len(sigbufs[0])//4096)*4096]
-        sigbufs_label = sigbufs_label[1,0:(len(sigbufs[0])//4096)*4096]
+    if len(sigbufs_label[0])%4096 !=0: # 배열을 4096크기로 나누어 떨어지지 않을때
+        # sigbufs = sigbufs[:,0:(len(sigbufs[0])//4096)*4096]
+        sigbufs_label = sigbufs_label[0,0:(len(sigbufs_label[0])//4096)*4096]
         # 4096으로 나눠서 나머지 없에고 갯수 맞춘 후
-        sigbufs = sigbufs.reshape(23,4096,-1) 
+        # sigbufs = sigbufs.reshape(23,4096,-1) 
         sigbufs_label = sigbufs_label.reshape(1,4096,-1) 
         # 3차원 모양으로 바꿈
     else:
         sigbufs_label = sigbufs_label.reshape(1,4096,-1) 
-        sigbufs = sigbufs.reshape(23,4096,-1)
+        # sigbufs = sigbufs.reshape(23,4096,-1)
         # 나누어 떨어지면 그냥 바꿈
-    print('배열모양 sigbufs', sigbufs.shape, 'sigbufs_label', sigbufs_label.shape)
-    np.save('%s%s' % (output_path, file_path_list[g][125:133]), sigbufs) # .npy 파일로 저장 
+    print('최종 구조 ', sigbufs_label.shape) # sigbufs.shape,
+    # np.save('%s%s' % (output_path, file_path_list[g][125:133]), sigbufs) # .npy 파일로 저장 
     np.save('%s%s_label' % (output_path, file_path_list[g][125:133]), sigbufs_label) # .npy 파일로 저장 
     g+=1
     file_edf.close() # 열린 파일 닫기-메모리 누수 방지
-    del sigbufs, sigbufs_label, signal_labels, n, file_edf
+    del  sigbufs_label, signal_labels, n, file_edf
+    # del sigbufs,
     # 변수 누적 방지
